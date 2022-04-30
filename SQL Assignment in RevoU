@@ -1,0 +1,220 @@
+#Q1. create query to get the avg amount of duration (in min) per month
+#month
+#avg in min
+#start date 2014-2017
+
+-- select 
+--    date(date_trunc(start_date,month)) as month
+--    ,  (avg(duration_sec)/60) as avg_in_min
+-- from `bigquery-public-data.san_francisco_bikeshare.bikeshare_trips`
+-- where extract(YEAR from (start_date)) between 2014 and 2017
+-- group by 1
+-- order by 1
+
+
+
+#Q2.Create query to get total trips and total number of unique bikes grouped by region name
+#region name
+#Total trip
+#Total bikes
+
+-- select
+--     Coalesce(c.name,'unknown') as region_name
+--     ,   count(a.trip_id) as total_trip
+--     ,   count(distinct(a.bike_number)) as total_uniq_bike
+-- from `bigquery-public-data.san_francisco_bikeshare.bikeshare_trips` as a
+-- left join `bigquery-public-data.san_francisco_bikeshare.bikeshare_station_info` as b on a.start_station_id = b.station_id
+-- left join `bigquery-public-data.san_francisco_bikeshare.bikeshare_regions` as c on b.region_id = c.region_id
+-- where extract(YEAR from (start_date)) between 2014 and 2017
+-- group by 1
+
+
+
+
+#Q3 find the youngest and oldest age of members for each gender. assume 2022
+#gender
+#young
+#old
+
+-- with age 
+-- as(
+--     select
+--        coalesce(member_gender,'unknown') as gender
+--         ,2022-max(member_birth_year) as youngest,
+--         2022-min(member_birth_year) as oldest
+--     from `bigquery-public-data.san_francisco_bikeshare.bikeshare_trips`
+--     where member_gender is not null
+--     group by 1
+-- )
+-- select *
+-- from age
+
+
+
+
+#Q4.Latest departure in each region
+#trip.id
+#duration_sec
+#start_date
+#start_station_name
+#member_gender
+#region_name
+
+-- with info
+-- as(
+-- select
+--     a.trip_id
+--     ,   a.duration_sec
+--     ,   a.start_date
+--     ,   a.start_station_name
+--     ,   coalesce(a.member_gender,'unknown') as member_gender
+--     ,   coalesce(c.name,'unknown') as region_name
+-- from `bigquery-public-data.san_francisco_bikeshare.bikeshare_trips` as a
+-- left join `bigquery-public-data.san_francisco_bikeshare.bikeshare_station_info` as b on a.start_station_id = b.station_id
+-- left join `bigquery-public-data.san_francisco_bikeshare.bikeshare_regions` as c on b.region_id = c.region_id
+-- where extract(YEAR from (start_date)) between 2014 and 2017
+-- ),
+-- ranking
+-- as (
+-- select 
+-- *,
+-- rank  () over (partition by region_name order by start_date desc) as latest
+-- from info
+-- )
+-- select * 
+-- from ranking
+-- where latest = 1
+
+
+
+
+#Q5
+#create a query to get month to date of total trips in each reegion, breakdown by date. timeframe nov 2017-dec 2017
+#(start_date,region_name, totaltrip{akumulatif})
+
+-- with 
+-- start_dates as
+-- (SELECT 
+--    cast(start_date as date) as start_date
+--    ,coalesce(c.name,'unknown') as region
+--    ,c.region_id
+--    ,cast(count(a.trip_id) as int) as total_trip
+-- From `bigquery-public-data.san_francisco_bikeshare.bikeshare_trips` as a
+-- left join `bigquery-public-data.san_francisco_bikeshare.bikeshare_station_info` as b on a.start_station_id = b.station_id
+-- left join `bigquery-public-data.san_francisco_bikeshare.bikeshare_regions` as c on b.region_id = c.region_id
+-- where  cast(start_date as date) between '2017-11-01' and '2018-01-01'
+-- group by 1,2,3
+-- order by 2,1 asc
+-- )
+-- select 
+--     start_date
+--     ,   region
+--     ,   (total_trip)
+--     ,   sum(total_trip)over (partition by region,extract(month from start_date) order by start_date) as cumulative_trip
+-- from start_dates
+-- group by 2,1,3
+-- order by 2,1
+
+
+
+#Q6
+ #monthly growth of trips in percentage, ordered by time desc.only the highest region total number of trips 
+-- with 
+-- highest_regions
+-- as(SELECT 
+--    coalesce(c.name,'unknown') as region
+--    , count(a.trip_id) as total_trip
+-- From `bigquery-public-data.san_francisco_bikeshare.bikeshare_trips` as a
+-- left join `bigquery-public-data.san_francisco_bikeshare.bikeshare_station_info` as b on a.start_station_id = b.station_id
+-- left join `bigquery-public-data.san_francisco_bikeshare.bikeshare_regions` as c on b.region_id = c.region_id
+-- where  cast(start_date as date) between '2014-01-01' and '2017-12-31'
+-- group by 1
+-- order by 2 desc
+-- limit 1
+-- ),
+-- month
+-- as(select 
+--     distinct cast(date_trunc(a.start_date,month) as date) as date
+--     ,c.name as region
+--     ,count(trip_id) as total_trip_per_month 
+-- From `bigquery-public-data.san_francisco_bikeshare.bikeshare_trips` as a
+-- left join `bigquery-public-data.san_francisco_bikeshare.bikeshare_station_info` as b on a.start_station_id = b.station_id
+-- left join `bigquery-public-data.san_francisco_bikeshare.bikeshare_regions` as c on b.region_id = c.region_id
+-- where  date_trunc(start_date, month) between '2014-01-01' and '2017-12-31'
+-- and coalesce(c.name,'unknown') = "San Francisco"
+-- group by 1,2
+-- order by 1 desc
+-- ),
+-- maths
+-- as(
+-- select 
+--     b.date as month
+--     ,   a.region
+--     ,   b.total_trip_per_month
+--     ,   lag(b.total_trip_per_month) over (order by  b.date) as tot_previous_month
+-- from highest_regions as a
+-- left join month as b
+-- on a.region = b.region
+-- group by 1,2,3
+-- order by 1 desc
+-- )
+-- select 
+--         month
+--             ,region
+--             ,total_trip_per_month
+--             , concat((cast ((total_trip_per_month-tot_previous_month)as decimal )/tot_previous_month)*100,'%') as growth_percent
+-- from maths
+
+
+
+
+-- #Q7 cohort analysis
+with cohort_item
+as(
+    select author as author
+    ,   MIN(DATE(DATE_TRUNC(time_ts,month))) as cohort_month
+    from `bigquery-public-data.hacker_news.stories`
+    group by 1
+    having extract(year from cohort_month) = 2014
+),
+
+user_activities 
+as(
+    select act.author as author
+            ,   DATE_DIFF(DATE(DATE_TRUNC(time_ts,month)),cohort.cohort_month,MONTH) as month_number
+    from `bigquery-public-data.hacker_news.stories` as act
+        left join cohort_item as cohort
+        on act.author = cohort.author
+    where extract(YEAR from act.time_ts) = 2014
+    group by 1,2
+),
+
+cohort_size
+as(
+    select cohort_month, count(1) as num_users
+    from cohort_item
+    group by cohort_month
+),
+
+retention_table
+as(
+    select 
+        b.cohort_month,
+        a.month_number, count(1) as num_users
+    from user_activities  as a
+        left join cohort_item as b
+    on a.author = b.author
+    group by b.cohort_month, a.month_number
+)
+
+select
+    r.cohort_month
+    ,   c.num_users as cohort_size
+    ,   r.month_number
+    ,   r.num_users as total_user
+    ,   cast(r.num_users as decimal)/ c.num_users as percentage
+from retention_table  as r
+left join cohort_size  as c
+on r.cohort_month = c.cohort_month
+where r.cohort_month is not null
+order by 1,3
